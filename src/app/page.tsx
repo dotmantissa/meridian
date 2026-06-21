@@ -30,9 +30,7 @@ export default function Home() {
       {/* Hero Section */}
       <section style={{ textAlign: 'center', margin: '3rem 0' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
-          <div className="logo-icon" style={{ width: '4.5rem', height: '4.5rem', fontSize: '2rem' }}>
-            <Compass size={36} />
-          </div>
+          <img src="/logo.png" alt="Meridian Logo" style={{ width: '5.5rem', height: '5.5rem', borderRadius: '50%', boxShadow: '0 4px 10px rgba(28, 176, 246, 0.3)' }} />
         </div>
         
         <h1 style={{ fontSize: '3.5rem', lineHeight: '1.1', marginBottom: '1.5rem' }}>

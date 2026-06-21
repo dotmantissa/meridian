@@ -28,7 +28,7 @@ export function runBackgroundAnalysis(params: AnalyzeTaskParams) {
       const safeCompany = company.replace(/"/g, '\\"');
       const safeCity = city.replace(/"/g, '\\"');
 
-      const cmd = `echo "meridian123" | genlayer write ${contractAddress} analyze_offer --args "${offerId}" "${safeRole}" "${safeCompany}" "${safeCity}" ${experienceYears} ${baseSalary}`;
+      const cmd = `echo meridian123| genlayer write ${contractAddress} analyze_offer --args "${offerId}" "${safeRole}" "${safeCompany}" "${safeCity}" ${experienceYears} ${baseSalary}`;
       
       console.log(`Running GenLayer command: ${cmd}`);
 

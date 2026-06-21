@@ -50,9 +50,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
       <div className="app-container">
         <header className="header">
           <Link href="/" className="logo-container">
-            <div className="logo-icon">
-              <Compass size={20} />
-            </div>
+            <img src="/logo.png" alt="Meridian Logo" style={{ width: '2.5rem', height: '2.5rem', borderRadius: '50%' }} />
             <span className="logo-text">Meridian</span>
           </Link>
           
