@@ -28,10 +28,10 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Fetch offers from database
-  const fetchOffers = async () => {
+  const fetchOffers = async (silent = false) => {
     if (!user?.id) return;
     try {
-      setRefreshing(true);
+      if (!silent) setRefreshing(true);
       const res = await fetch(`/api/offers?userId=${user.id}`);
       const data = await res.json();
       if (data.offers) {
@@ -59,6 +59,23 @@ export default function Dashboard() {
     }
   }, [user]);
 
+  // Status Polling for active checks
+  useEffect(() => {
+    if (!user?.id || offers.length === 0) return;
+
+    const hasActiveChecks = offers.some(
+      (o) => o.status === 'pending' || o.status === 'processing'
+    );
+
+    if (hasActiveChecks) {
+      const interval = setInterval(() => {
+        fetchOffers(true); // Silent background fetch
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [offers, user]);
+
   if (!ready || loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
@@ -80,7 +97,7 @@ export default function Dashboard() {
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <button 
-            onClick={fetchOffers} 
+            onClick={() => fetchOffers()} 
             className="btn btn-secondary" 
             style={{ padding: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             disabled={refreshing}
@@ -165,7 +182,7 @@ export default function Dashboard() {
                       Validators agreeing...
                     </div>
                   ) : (
-                    <button onClick={fetchOffers} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <button onClick={() => fetchOffers()} className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                       Retry Check
                     </button>
                   )}
