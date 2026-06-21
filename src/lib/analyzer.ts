@@ -42,8 +42,9 @@ export function runBackgroundAnalysis(params: AnalyzeTaskParams) {
 
         console.log(`CLI write stdout for ${offerId}:\n`, stdout);
 
-        // Try to extract Transaction Hash and Contract Address
-        const txHashMatch = stdout.match(/'Transaction Hash':\s*'([0-9a-fxA-FX]+)'/);
+        // Try to extract Transaction Hash
+        const txHashMatch = stdout.match(/Write Transaction Hash:\s*\r?\n\s*(0x[0-9a-fA-F]{64})/i) 
+          || stdout.match(/hash:\s*'([0-9a-fA-F]+)'/i);
         const txHash = txHashMatch ? txHashMatch[1] : null;
 
         if (!txHash) {
