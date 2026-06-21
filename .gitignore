@@ -1,0 +1,7 @@
+node_modules/
+.next/
+.env
+.pytest_cache/
+.gltest_cache/
+artifacts/
+*.log
