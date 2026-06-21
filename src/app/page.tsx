@@ -37,7 +37,11 @@ export default function Home() {
         </p>
         
         <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <button onClick={login} className="btn btn-primary" style={{ padding: '1rem 2rem', fontSize: '1.1rem' }}>
+          <button 
+            onClick={authenticated ? () => router.push('/upload') : login} 
+            className="btn btn-primary" 
+            style={{ padding: '1rem 2rem', fontSize: '1.1rem' }}
+          >
             Verify Your Offer Now
           </button>
           <a href="#how-it-works" className="btn btn-secondary" style={{ padding: '1rem 2rem', fontSize: '1.1rem' }}>
