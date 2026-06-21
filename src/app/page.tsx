@@ -9,12 +9,7 @@ export default function Home() {
   const { login, authenticated, ready } = usePrivy();
   const router = useRouter();
 
-  // Redirect to dashboard if already authenticated
-  useEffect(() => {
-    if (ready && authenticated) {
-      router.push('/dashboard');
-    }
-  }, [ready, authenticated, router]);
+
 
   if (!ready) {
     return (
