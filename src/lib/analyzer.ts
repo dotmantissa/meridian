@@ -1,5 +1,6 @@
-import { exec } from 'child_process';
 import { query } from './db';
+import { createClient, createAccount } from 'genlayer-js';
+import { studionet } from 'genlayer-js/chains';
 
 interface AnalyzeTaskParams {
   offerId: string;
@@ -10,135 +11,147 @@ interface AnalyzeTaskParams {
   baseSalary: number;
 }
 
-export function runBackgroundAnalysis(params: AnalyzeTaskParams) {
+// 1. Submit transaction to GenLayer contract (returns txHash immediately)
+export async function submitOfferToContract(params: AnalyzeTaskParams): Promise<string> {
   const { offerId, role, company, city, experienceYears, baseSalary } = params;
-  const contractAddress = process.env.GENLAYER_CONTRACT_ADDRESS || '0x4eA97197F99294438bAfbef521Bf5C68ae43d176';
+  const contractAddress = process.env.GENLAYER_CONTRACT_ADDRESS || '0x98A85FDA15ECf862FE2cE5865e70bC6a7929A048';
 
-  // Return a promise but don't await it in the route so it runs asynchronously
-  (async () => {
-    try {
-      console.log(`Starting background consensus analysis for offer ${offerId}...`);
-      
-      // Update status to processing
-      await query("UPDATE offers SET status = 'processing' WHERE id = $1", [offerId]);
+  const privateKey = process.env.GENLAYER_PRIVATE_KEY;
+  if (!privateKey) {
+    throw new Error('GENLAYER_PRIVATE_KEY is not defined in environment variables');
+  }
 
-      // Construct CLI command. Note: We use double quotes for arguments
-      // Escaping special characters in strings for powershell/cmd compatibility
-      const safeRole = role.replace(/"/g, '\\"');
-      const safeCompany = company.replace(/"/g, '\\"');
-      const safeCity = city.replace(/"/g, '\\"');
+  const account = createAccount(privateKey as `0x${string}`);
+  const client = createClient({
+    chain: studionet,
+    account: account,
+  });
 
-      const cmd = `echo meridian123| genlayer write ${contractAddress} analyze_offer --args "${offerId}" "${safeRole}" "${safeCompany}" "${safeCity}" ${experienceYears} ${baseSalary}`;
-      
-      console.log(`Running GenLayer command: ${cmd}`);
+  console.log(`Submitting programmatic write transaction for offer ${offerId}...`);
+  const txHash = await client.writeContract({
+    address: contractAddress as `0x${string}`,
+    functionName: 'analyze_offer',
+    args: [offerId, role, company, city, experienceYears, baseSalary],
+    value: 0n,
+  });
 
-      exec(cmd, { timeout: 300000 }, async (error, stdout, stderr) => {
-        if (error) {
-          console.error(`CLI execution error for offer ${offerId}:`, error);
-          console.error(`stderr: ${stderr}`);
-          await query("UPDATE offers SET status = 'failed' WHERE id = $1", [offerId]);
-          return;
-        }
-
-        console.log(`CLI write stdout for ${offerId}:\n`, stdout);
-
-        // Try to extract Transaction Hash
-        const txHashMatch = stdout.match(/Write Transaction Hash:\s*\r?\n\s*(0x[0-9a-fA-F]{64})/i) 
-          || stdout.match(/hash:\s*'([0-9a-fA-F]+)'/i);
-        const txHash = txHashMatch ? txHashMatch[1] : null;
-
-        if (!txHash) {
-          console.error(`Failed to parse transaction hash for offer ${offerId}`);
-          await query("UPDATE offers SET status = 'failed' WHERE id = $1", [offerId]);
-          return;
-        }
-
-        console.log(`Transaction submitted! Hash: ${txHash}. Fetching result...`);
-
-        // Fetch the results using get_analysis
-        const readCmd = `genlayer call ${contractAddress} get_analysis --args "${offerId}"`;
-        exec(readCmd, async (readError, readStdout, readStderr) => {
-          if (readError) {
-            console.error(`CLI read error for offer ${offerId}:`, readError);
-            await query("UPDATE offers SET status = 'failed' WHERE id = $1", [offerId]);
-            return;
-          }
-
-          try {
-            console.log(`CLI read stdout for ${offerId}:\n`, readStdout);
-
-            // Extract the JSON portion from the read stdout
-            const resultIndex = readStdout.indexOf('Result:');
-            if (resultIndex === -1) {
-              throw new Error('Result marker not found in output');
-            }
-
-            const jsonStr = readStdout.substring(resultIndex + 7).trim();
-            // Parse custom formatted JS object output by CLI.
-            // On Windows, the CLI outputs formatted JS object (not strict JSON, keys without quotes etc.)
-            // We can parse it by evaluating or running a regex parser, or we can use a safe evaluator
-            // Since we know the schema, we can parse it dynamically
-            const data = parseCliResultObject(jsonStr);
-
-            console.log(`Successfully parsed contract data for offer ${offerId}:`, data);
-
-            // Insert report details into database
-            await query(
-              `INSERT INTO analysis_reports (
-                offer_id, tx_hash, contract_address, 
-                market_salary_min, market_salary_max, market_salary_median, 
-                recommended_base, equity_rating, equity_advice, 
-                negotiation_leverage, full_report_json
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-              [
-                offerId,
-                txHash,
-                contractAddress,
-                data.market_min,
-                data.market_max,
-                data.market_median,
-                data.recommended_base,
-                data.equity_rating,
-                data.equity_advice,
-                data.negotiation_points,
-                JSON.stringify(data)
-              ]
-            );
-
-            // Update status to completed
-            await query("UPDATE offers SET status = 'completed' WHERE id = $1", [offerId]);
-            console.log(`Consensus analysis for offer ${offerId} fully completed!`);
-
-          } catch (parseErr: any) {
-            console.error(`Failed to parse/save read results for offer ${offerId}:`, parseErr);
-            await query("UPDATE offers SET status = 'failed' WHERE id = $1", [offerId]);
-          }
-        });
-      });
-
-    } catch (err) {
-      console.error(`Error in runBackgroundAnalysis for offer ${offerId}:`, err);
-      await query("UPDATE offers SET status = 'failed' WHERE id = $1", [offerId]);
-    }
-  })();
+  return txHash;
 }
 
-// Helper function to parse Javascript-like object formats printed by genlayer-js CLI
-function parseCliResultObject(str: string): any {
-  // Replace single quotes with double quotes for JSON parsing
-  // Handle keys without quotes (e.g. city: 'London' -> "city": "London")
+// 2. Check transaction status and compile report if finalized
+export async function checkAndUpdateOfferStatus(offerId: string, txHash: string): Promise<{ offer: any, report: any }> {
+  const contractAddress = process.env.GENLAYER_CONTRACT_ADDRESS || '0x98A85FDA15ECf862FE2cE5865e70bC6a7929A048';
+
+  const privateKey = process.env.GENLAYER_PRIVATE_KEY;
+  if (!privateKey) {
+    throw new Error('GENLAYER_PRIVATE_KEY is not defined in environment variables');
+  }
+
+  const account = createAccount(privateKey as `0x${string}`);
+  const client = createClient({
+    chain: studionet,
+    account: account,
+  });
+
+  console.log(`Checking transaction receipt for ${txHash} (offer ${offerId})...`);
+
   try {
-    // A quick, safe way is using Function() constructor to evaluate it as a JS object since it's locally generated CLI output
-    const fn = new Function(`return ${str};`);
-    return fn();
-  } catch (e) {
-    console.warn('Function evaluation failed, trying regex parser...', e);
-    // Fallback regex cleaning
-    let clean = str
-      .replace(/'/g, '"')
-      .replace(/(\w+):\s*"/g, '"$1": "')
-      .replace(/(\w+):\s*(\d+)/g, '"$1": $2')
-      .replace(/(\w+):\s*(\[|\{)/g, '"$1": $2');
-    return JSON.parse(clean);
+    // Attempt to get receipt immediately with 0 retries
+    const receipt = await client.waitForTransactionReceipt({
+      hash: txHash as any,
+      status: 'FINALIZED' as any,
+      interval: 1000,
+      retries: 0,
+    });
+
+    console.log(`Receipt received for ${txHash}! Status: ${receipt.status}`);
+
+    // Fetch the results using get_analysis
+    console.log(`Fetching results from contract using get_analysis...`);
+    const result = await client.readContract({
+      address: contractAddress as `0x${string}`,
+      functionName: 'get_analysis',
+      args: [offerId],
+    }) as any;
+
+    if (!result) {
+      throw new Error('Analysis result from contract is null');
+    }
+
+    console.log(`Successfully retrieved contract analysis data for offer ${offerId}:`, result);
+
+    // Save report to DB (use ON CONFLICT to avoid duplicate reports if checked concurrently)
+    const reportRes = await query(
+      `INSERT INTO analysis_reports (
+        offer_id, tx_hash, contract_address, 
+        market_salary_min, market_salary_max, market_salary_median, 
+        recommended_base, equity_rating, equity_advice, 
+        negotiation_leverage, full_report_json
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      ON CONFLICT (offer_id) DO UPDATE SET
+        tx_hash = EXCLUDED.tx_hash,
+        market_salary_min = EXCLUDED.market_salary_min,
+        market_salary_max = EXCLUDED.market_salary_max,
+        market_salary_median = EXCLUDED.market_salary_median,
+        recommended_base = EXCLUDED.recommended_base,
+        equity_rating = EXCLUDED.equity_rating,
+        equity_advice = EXCLUDED.equity_advice,
+        negotiation_leverage = EXCLUDED.negotiation_leverage,
+        full_report_json = EXCLUDED.full_report_json
+      RETURNING *`,
+      [
+        offerId,
+        txHash,
+        contractAddress,
+        Number(result.market_min),
+        Number(result.market_max),
+        Number(result.market_median),
+        Number(result.recommended_base),
+        result.equity_rating,
+        result.equity_advice,
+        result.negotiation_points,
+        JSON.stringify(result)
+      ]
+    );
+
+    // Update status to completed
+    const offerRes = await query(
+      "UPDATE offers SET status = 'completed' WHERE id = $1 RETURNING *",
+      [offerId]
+    );
+
+    console.log(`Consensus analysis for offer ${offerId} fully completed!`);
+    return {
+      offer: offerRes.rows[0],
+      report: reportRes.rows[0]
+    };
+
+  } catch (err: any) {
+    const errMsg = err.message || '';
+    const errMsgLower = errMsg.toLowerCase();
+    console.log(`Transaction ${txHash} not finalized yet or check failed:`, errMsg);
+
+    // If it is a generic not found/timeout error, it means transaction is still pending/processing
+    const isPending = errMsgLower.includes('timeout') || errMsgLower.includes('timed out') || errMsgLower.includes('not found') || errMsgLower.includes('receipt') || errMsgLower.includes('pending');
+
+    if (!isPending) {
+      // Definitive contract execution error
+      console.error(`Definitive failure for offer ${offerId}:`, err);
+      const offerRes = await query(
+        "UPDATE offers SET status = 'failed' WHERE id = $1 RETURNING *",
+        [offerId]
+      );
+      return {
+        offer: offerRes.rows[0],
+        report: null
+      };
+    }
+
+    // Still pending, just return current offer state
+    const offerRes = await query("SELECT * FROM offers WHERE id = $1", [offerId]);
+    return {
+      offer: offerRes.rows[0],
+      report: null
+    };
   }
 }

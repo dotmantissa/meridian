@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { checkAndUpdateOfferStatus } from '@/lib/analyzer';
 
 export async function GET(
   request: Request,
@@ -17,11 +18,18 @@ export async function GET(
     if (offerRes.rows.length === 0) {
       return NextResponse.json({ error: 'Offer not found' }, { status: 404 });
     }
-    const offer = offerRes.rows[0];
+    let offer = offerRes.rows[0];
 
     // Fetch report
     const reportRes = await query('SELECT * FROM analysis_reports WHERE offer_id = $1', [id]);
-    const report = reportRes.rows.length > 0 ? reportRes.rows[0] : null;
+    let report = reportRes.rows.length > 0 ? reportRes.rows[0] : null;
+
+    // If offer is processing and has a transaction hash, but report is not compiled yet, check status
+    if (offer.status === 'processing' && offer.tx_hash && !report) {
+      const checkResult = await checkAndUpdateOfferStatus(offer.id, offer.tx_hash);
+      offer = checkResult.offer;
+      report = checkResult.report;
+    }
 
     return NextResponse.json({ offer, report });
   } catch (err: any) {

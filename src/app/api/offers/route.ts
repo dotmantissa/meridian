@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { runBackgroundAnalysis } from '@/lib/analyzer';
+import { submitOfferToContract } from '@/lib/analyzer';
 
 // GET: Retrieve all offers for a specific user
 export async function GET(request: Request) {
@@ -57,17 +57,33 @@ export async function POST(request: Request) {
 
     const newOffer = insertRes.rows[0];
 
-    // Trigger GenLayer analysis in the background
-    runBackgroundAnalysis({
-      offerId: newOffer.id,
-      role: newOffer.role,
-      company: newOffer.company,
-      city: newOffer.city,
-      experienceYears: newOffer.experience_years,
-      baseSalary: parseFloat(newOffer.base_salary)
-    });
+    try {
+      // Submit GenLayer write transaction synchronously
+      const txHash = await submitOfferToContract({
+        offerId: newOffer.id,
+        role: newOffer.role,
+        company: newOffer.company,
+        city: newOffer.city,
+        experienceYears: newOffer.experience_years,
+        baseSalary: parseFloat(newOffer.base_salary)
+      });
 
-    return NextResponse.json({ offer: newOffer });
+      // Update offer status to 'processing' and save tx_hash
+      const updateRes = await query(
+        "UPDATE offers SET status = 'processing', tx_hash = $1 WHERE id = $2 RETURNING *",
+        [txHash, newOffer.id]
+      );
+
+      return NextResponse.json({ offer: updateRes.rows[0] });
+    } catch (err: any) {
+      console.error(`Failed to submit transaction for offer ${newOffer.id}:`, err);
+      // Update status to failed
+      const updateRes = await query(
+        "UPDATE offers SET status = 'failed' WHERE id = $1 RETURNING *",
+        [newOffer.id]
+      );
+      return NextResponse.json({ offer: updateRes.rows[0], error: err.message });
+    }
   } catch (err: any) {
     console.error('Offers POST API Error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

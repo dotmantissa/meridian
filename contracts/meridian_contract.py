@@ -65,10 +65,10 @@ class MeridianContract(gl.Contract):
             4. Provide 3 specific, highly customized negotiation points/talking scripts. Make them sound human, persuasive, and free of generic HR template language.
 
             You MUST return a JSON object with these exact keys:
-            - "market_min": integer (minimum base salary in local currency)
-            - "market_max": integer (maximum base salary in local currency)
-            - "market_median": integer (median base salary in local currency)
-            - "recommended_base": integer (target base salary to request)
+            - "market_min": integer (minimum base salary in the same currency unit as the offered base salary)
+            - "market_max": integer (maximum base salary in the same currency unit as the offered base salary)
+            - "market_median": integer (median base salary in the same currency unit as the offered base salary)
+            - "recommended_base": integer (target base salary to request in the same currency unit)
             - "equity_rating": string (must be "excellent", "standard", "below_market", or "risky")
             - "equity_advice": string (clear analysis of equity terms and warnings about vesting/liquidation)
             - "negotiation_points": string (custom bulleted talking points)
