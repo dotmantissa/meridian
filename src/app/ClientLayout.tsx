@@ -104,7 +104,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         appearance: {
           theme: 'light',
           accentColor: '#1cb0f6',
-          logo: 'https://raw.githubusercontent.com/dotmantissa/meridian/main/public/logo.png', // Temporary placeholder until created
+          logo: typeof window !== 'undefined' ? `${window.location.origin}/logo.png` : 'https://meridian-audit.vercel.app/logo.png',
         },
       }}
     >
