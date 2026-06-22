@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100%" height="100%">
+  <defs>
+    <!-- Vibrant premium gradient that stands out on BOTH light and dark backgrounds -->
+    <linearGradient id="meridian-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="40%" stop-color="#1cb0f6" />
+      <stop offset="100%" stop-color="#58cc02" />
+    </linearGradient>
+    
+    <!-- Drop shadow filter to give depth and contrast on any background -->
+    <filter id="meridian-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <g filter="url(#meridian-shadow)">
+    <!-- Background Globe / Meridian Coordinate Ring -->
+    <!-- Outer circle -->
+    <circle cx="50" cy="50" r="40" fill="none" stroke="url(#meridian-gradient)" stroke-width="2.5" opacity="0.3" />
+    
+    <!-- Vertical meridian ellipse -->
+    <ellipse cx="50" cy="50" rx="18" ry="40" fill="none" stroke="url(#meridian-gradient)" stroke-width="2" opacity="0.25" />
+    
+    <!-- Horizontal equator line -->
+    <line x1="10" y1="50" x2="90" y2="50" stroke="url(#meridian-gradient)" stroke-width="2" opacity="0.2" />
+    
+    <!-- Vertical prime meridian line -->
+    <line x1="50" y1="10" x2="50" y2="90" stroke="url(#meridian-gradient)" stroke-width="2" opacity="0.2" />
+
+    <!-- Foreground Stylized M & Compass Arrow -->
+    <!-- Path 1: Left leg, valley, right peak, arrow extension -->
+    <path d="M 26,70 L 26,42 L 44,60 L 62,42 L 78,26" 
+          fill="none" 
+          stroke="url(#meridian-gradient)" 
+          stroke-width="9.5" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" />
+          
+    <!-- Path 2: Right leg -->
+    <path d="M 62,42 L 62,70" 
+          fill="none" 
+          stroke="url(#meridian-gradient)" 
+          stroke-width="9.5" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" />
+          
+    <!-- Path 3: Arrowhead pointing northeast -->
+    <path d="M 65,26 L 78,26 L 78,39" 
+          fill="none" 
+          stroke="url(#meridian-gradient)" 
+          stroke-width="9.5" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" />
+  </g>
+</svg>

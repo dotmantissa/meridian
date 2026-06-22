@@ -45,8 +45,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [copied, setCopied] = useState(false);
   const [selectedTone, setSelectedTone] = useState<'polite' | 'assertive' | 'humorous'>('polite');
 
-  const fetchReportDetails = async () => {
+  const fetchReportDetails = async (silent = false) => {
     try {
+      if (!silent) setLoading(true);
       const res = await fetch(`/api/offers/${id}`);
       const data = await res.json();
       if (res.ok) {
@@ -67,14 +68,34 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     }
   }, [ready, authenticated, router]);
 
-  // Fetch report details
+  // Fetch report details & poll status in background while processing
   useEffect(() => {
-    if (id) {
-      fetchReportDetails();
-    }
+    if (!id) return;
+
+    fetchReportDetails(); // Initial fetch
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/offers/${id}`);
+        const data = await res.json();
+        if (res.ok) {
+          setOffer(data.offer);
+          setReport(data.report);
+          
+          // Stop polling once the background consensus completes
+          if (data.offer && data.offer.status !== 'pending' && data.offer.status !== 'processing') {
+            clearInterval(interval);
+          }
+        }
+      } catch (err) {
+        console.error('Error polling report details:', err);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, [id]);
 
-  if (!ready || loading) {
+  if (!ready || (loading && !offer)) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
         <div className="spinner"></div>
@@ -82,15 +103,69 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     );
   }
 
-  if (!offer || !report) {
+  // Consensus progress loader page
+  if (offer && (offer.status === 'pending' || offer.status === 'processing' || !report)) {
     return (
-      <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
-        <h2 style={{ marginBottom: '1rem' }}>Analysis Not Ready Yet</h2>
+      <div style={{ maxWidth: '600px', margin: '4rem auto', textAlign: 'center', padding: '2.5rem' }} className="card">
+        <div style={{ display: 'inline-flex', marginBottom: '2rem' }}>
+          <div className="spinner" style={{ width: '4rem', height: '4rem', borderWidth: '5px' }}></div>
+        </div>
+        
+        <h2 style={{ fontSize: '1.8rem', marginBottom: '1rem' }}>On-Chain Consensus in Progress</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '2.5rem', fontSize: '1.1rem' }}>
+          GenLayer validators are executing compensation models to verify the salary benchmarks for <strong>{offer.role}</strong> at <strong>{offer.company}</strong>.
+        </p>
+
+        {/* Loading Steps */}
+        <div style={{ textAlign: 'left', backgroundColor: 'var(--bg-secondary)', padding: '1.5rem', borderRadius: '16px', border: '2px solid var(--card-border)', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="spinner" style={{ width: '1.2rem', height: '1.2rem', borderWidth: '2px' }}></div>
+            <span style={{ fontWeight: '600', fontSize: '0.95rem' }}>Querying regional salary databases...</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', opacity: 0.7 }}>
+            <div style={{ width: '1.2rem', height: '1.2rem', borderRadius: '50%', backgroundColor: 'var(--card-border)', flexShrink: 0 }}></div>
+            <span style={{ fontSize: '0.95rem' }}>Evaluating equity vesting rules & schedules...</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', opacity: 0.5 }}>
+            <div style={{ width: '1.2rem', height: '1.2rem', borderRadius: '50%', backgroundColor: 'var(--card-border)', flexShrink: 0 }}></div>
+            <span style={{ fontSize: '0.95rem' }}>Validators reaching consensus quorum...</span>
+          </div>
+        </div>
+
+        <div style={{ marginTop: '2.5rem' }}>
+          <Link href="/dashboard" className="btn btn-secondary" style={{ padding: '0.6rem 1.2rem' }}>
+            Back to Dashboard (Runs in Background)
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Failed state
+  if (offer && offer.status === 'failed') {
+    return (
+      <div style={{ maxWidth: '600px', margin: '4rem auto', textAlign: 'center', padding: '2.5rem' }} className="card">
+        <h2 style={{ fontSize: '1.8rem', marginBottom: '1rem', color: 'var(--danger-color)' }}>Consensus Check Failed</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-          GenLayer validators are still executing models to verify the salary benchmarks for this role.
+          The validators encountered an error while auditing this offer letter. Please make sure the input parameters are valid.
         </p>
         <Link href="/dashboard" className="btn btn-primary">
-          Back to Dashboard
+          Return to Dashboard
+        </Link>
+      </div>
+    );
+  }
+
+  // Guard check if offer or report is missing
+  if (!offer || !report) {
+    return (
+      <div style={{ maxWidth: '600px', margin: '4rem auto', textAlign: 'center', padding: '2.5rem' }} className="card">
+        <h2 style={{ fontSize: '1.8rem', marginBottom: '1rem', color: 'var(--danger-color)' }}>Report Not Found</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
+          The requested job offer analysis report could not be found or loaded.
+        </p>
+        <Link href="/dashboard" className="btn btn-primary">
+          Return to Dashboard
         </Link>
       </div>
     );
@@ -202,27 +277,27 @@ ${candidateName}`;
         <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem' }}>Market Salary Benchmark</h2>
         
         {/* Visual range bar */}
-        <div style={{ position: 'relative', height: '40px', backgroundColor: 'var(--bg-secondary)', borderRadius: '20px', border: '2px solid var(--card-border)', marginBottom: '3rem', marginTop: '1.5rem' }}>
+        <div style={{ position: 'relative', height: '40px', backgroundColor: 'var(--bg-secondary)', borderRadius: '20px', border: '2px solid var(--card-border)', marginBottom: '3rem', marginTop: '2.5rem', marginLeft: '1.5rem', marginRight: '1.5rem' }}>
           
-          {/* Median Marker */}
-          <div style={{ position: 'absolute', left: `${medianPosition}%`, top: '-10px', bottom: '-10px', width: '4px', backgroundColor: 'var(--primary-color)', zIndex: 10 }}>
-            <div style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: '700', color: 'var(--primary-color)' }}>
-              MEDIAN ({formatCurrency(medianNum)})
-            </div>
+          {/* Median Line */}
+          <div style={{ position: 'absolute', left: `${medianPosition}%`, top: '-10px', bottom: '-10px', width: '4px', backgroundColor: 'var(--primary-color)', zIndex: 10 }}></div>
+          {/* Median Label (Clamped to avoid edge overflow) */}
+          <div style={{ position: 'absolute', left: `${Math.max(15, Math.min(85, medianPosition))}%`, top: '-30px', transform: 'translateX(-50%)', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: '700', color: 'var(--primary-color)', zIndex: 13 }}>
+            MEDIAN ({formatCurrency(medianNum)})
           </div>
 
-          {/* Target Base Marker */}
-          <div style={{ position: 'absolute', left: `${recPosition}%`, top: '-10px', bottom: '-10px', width: '4px', backgroundColor: 'var(--success-color)', zIndex: 11 }}>
-            <div style={{ position: 'absolute', bottom: '-25px', left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: '800', color: 'var(--success-color)' }}>
-              TARGET ({formatCurrency(recNum)})
-            </div>
+          {/* Target Base Line */}
+          <div style={{ position: 'absolute', left: `${recPosition}%`, top: '-10px', bottom: '-10px', width: '4px', backgroundColor: 'var(--success-color)', zIndex: 11 }}></div>
+          {/* Target Base Label (Clamped to avoid edge overflow) */}
+          <div style={{ position: 'absolute', left: `${Math.max(15, Math.min(85, recPosition))}%`, bottom: '-30px', transform: 'translateX(-50%)', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: '800', color: 'var(--success-color)', zIndex: 13 }}>
+            TARGET ({formatCurrency(recNum)})
           </div>
 
-          {/* Offered Base Indicator */}
-          <div style={{ position: 'absolute', left: `${offeredPosition}%`, top: '50%', transform: 'translate(-50%, -50%)', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: 'var(--danger-color)', border: '3px solid white', boxShadow: '0 0 10px rgba(0,0,0,0.2)', zIndex: 12 }} title="Your Offer">
-            <div style={{ position: 'absolute', top: '-28px', left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: '700', color: 'var(--danger-color)' }}>
-              OFFERED ({formatCurrency(offeredNum)})
-            </div>
+          {/* Offered Base Dot */}
+          <div style={{ position: 'absolute', left: `${offeredPosition}%`, top: '50%', transform: 'translate(-50%, -50%)', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: 'var(--danger-color)', border: '3px solid white', boxShadow: '0 0 10px rgba(0,0,0,0.2)', zIndex: 12 }} title="Your Offer"></div>
+          {/* Offered Base Label (Clamped to avoid edge overflow) */}
+          <div style={{ position: 'absolute', left: `${Math.max(15, Math.min(85, offeredPosition))}%`, top: '-30px', transform: 'translateX(-50%)', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: '700', color: 'var(--danger-color)', zIndex: 13 }}>
+            OFFERED ({formatCurrency(offeredNum)})
           </div>
         </div>
 

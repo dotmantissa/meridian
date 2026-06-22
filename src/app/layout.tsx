@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   title: 'Meridian | Job Offer Intelligence',
   description: 'Reveal what is inside your job offer letter. Meridian reads your compensation details, benchmarks base salary against live market parameters on-chain, and empowers you to negotiate with clarity.',
   icons: {
-    icon: '/favicon.png',
-    shortcut: '/favicon.png',
-    apple: '/favicon.png',
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
   },
 };
 

@@ -77,8 +77,8 @@ export default function UploadOffer() {
         throw new Error(data.error || 'Failed to submit offer.');
       }
 
-      // Success - redirect to dashboard where task runs in background
-      router.push('/dashboard');
+      // Success - redirect directly to report page (where polling loader will wait for consensus)
+      router.push(`/report/${data.offer.id}`);
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'An unexpected error occurred.');
