@@ -127,10 +127,11 @@ export async function checkAndUpdateOfferStatus(offerId: string, txHash: string)
   }
 
   try {
-    // Fetch the results using get_analysis
-    console.log(`Fetching results from contract using get_analysis...`);
+    // Fetch the results using get_analysis from the contract that actually executed the transaction
+    const targetContractAddress = receipt.recipient || receipt.contract_snapshot?.contract_address || contractAddress;
+    console.log(`Fetching results from contract ${targetContractAddress} using get_analysis...`);
     const result = await client.readContract({
-      address: contractAddress as `0x${string}`,
+      address: targetContractAddress as `0x${string}`,
       functionName: 'get_analysis',
       args: [offerId],
     }) as any;
@@ -163,7 +164,7 @@ export async function checkAndUpdateOfferStatus(offerId: string, txHash: string)
       [
         offerId,
         txHash,
-        contractAddress,
+        targetContractAddress,
         Number(result.market_min),
         Number(result.market_max),
         Number(result.market_median),

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { submitOfferToContract } from '@/lib/analyzer';
+import { submitOfferToContract, checkAndUpdateOfferStatus } from '@/lib/analyzer';
 
 // GET: Retrieve all offers for a specific user
 export async function GET(request: Request) {
@@ -21,7 +21,29 @@ export async function GET(request: Request) {
       [userId]
     );
 
-    return NextResponse.json({ offers: res.rows });
+    const offers = res.rows;
+
+    // Check and update status for any in-flight processing offers dynamically
+    const checkPromises = offers.map(async (offer, index) => {
+      if (offer.status === 'processing' && offer.tx_hash) {
+        try {
+          const checkResult = await checkAndUpdateOfferStatus(offer.id, offer.tx_hash);
+          offers[index] = {
+            ...offer,
+            status: checkResult.offer.status,
+            market_salary_median: checkResult.report ? checkResult.report.market_salary_median : offer.market_salary_median,
+            recommended_base: checkResult.report ? checkResult.report.recommended_base : offer.recommended_base,
+            equity_rating: checkResult.report ? checkResult.report.equity_rating : offer.equity_rating,
+          };
+        } catch (err) {
+          console.error(`Error checking status for offer ${offer.id} in list:`, err);
+        }
+      }
+    });
+
+    await Promise.all(checkPromises);
+
+    return NextResponse.json({ offers });
   } catch (err: any) {
     console.error('Offers GET API Error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
