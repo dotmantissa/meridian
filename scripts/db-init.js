@@ -46,7 +46,7 @@ async function main() {
         await client.query(`
             CREATE TABLE IF NOT EXISTS analysis_reports (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                offer_id UUID REFERENCES offers(id) ON DELETE CASCADE,
+                offer_id UUID UNIQUE REFERENCES offers(id) ON DELETE CASCADE,
                 tx_hash VARCHAR(255),
                 contract_address VARCHAR(255),
                 market_salary_min NUMERIC NOT NULL,

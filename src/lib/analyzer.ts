@@ -55,17 +55,78 @@ export async function checkAndUpdateOfferStatus(offerId: string, txHash: string)
 
   console.log(`Checking transaction receipt for ${txHash} (offer ${offerId})...`);
 
+  let receipt: any;
   try {
     // Attempt to get receipt immediately with 0 retries
-    const receipt = await client.waitForTransactionReceipt({
+    receipt = await client.waitForTransactionReceipt({
       hash: txHash as any,
       status: 'FINALIZED' as any,
       interval: 1000,
       retries: 0,
     });
+    console.log(`Receipt received for ${txHash}! Status: ${receipt.status_name || receipt.status}, Result Name: ${receipt.result_name}`);
+  } catch (err: any) {
+    const errMsg = err.message || '';
+    const errMsgLower = errMsg.toLowerCase();
+    console.log(`Transaction ${txHash} receipt check failed:`, errMsg);
 
-    console.log(`Receipt received for ${txHash}! Status: ${receipt.status}`);
+    // If it is a generic not found/timeout error, it means transaction is still pending/processing
+    const isPending = errMsgLower.includes('timeout') || errMsgLower.includes('timed out') || errMsgLower.includes('not found') || errMsgLower.includes('receipt') || errMsgLower.includes('pending');
 
+    if (!isPending) {
+      // Definitive contract execution error/receipt fetch error
+      console.error(`Definitive failure for offer ${offerId} during receipt check:`, err);
+      const offerRes = await query(
+        "UPDATE offers SET status = 'failed' WHERE id = $1 RETURNING *",
+        [offerId]
+      );
+      return {
+        offer: offerRes.rows[0],
+        report: null
+      };
+    }
+
+    // Check if the transaction has been stuck in processing for too long (15 minutes)
+    const offerRes = await query("SELECT * FROM offers WHERE id = $1", [offerId]);
+    const offer = offerRes.rows[0];
+    if (offer && offer.created_at) {
+      const createdAt = new Date(offer.created_at).getTime();
+      const now = Date.now();
+      const minutesElapsed = (now - createdAt) / (1000 * 60);
+      if (minutesElapsed > 15) {
+        console.log(`Transaction ${txHash} for offer ${offerId} has been pending for ${minutesElapsed.toFixed(1)} minutes (stuck). Marking as failed.`);
+        const updatedRes = await query(
+          "UPDATE offers SET status = 'failed' WHERE id = $1 RETURNING *",
+          [offerId]
+        );
+        return {
+          offer: updatedRes.rows[0],
+          report: null
+        };
+      }
+    }
+
+    // Still pending, just return current offer state
+    return {
+      offer: offerRes.rows[0],
+      report: null
+    };
+  }
+
+  // Handle consensus disagreement
+  if (receipt.result_name === 'MAJORITY_DISAGREE') {
+    console.log(`Consensus disagreed (MAJORITY_DISAGREE) for offer ${offerId}`);
+    const offerRes = await query(
+      "UPDATE offers SET status = 'failed' WHERE id = $1 RETURNING *",
+      [offerId]
+    );
+    return {
+      offer: offerRes.rows[0],
+      report: null
+    };
+  }
+
+  try {
     // Fetch the results using get_analysis
     console.log(`Fetching results from contract using get_analysis...`);
     const result = await client.readContract({
@@ -127,28 +188,11 @@ export async function checkAndUpdateOfferStatus(offerId: string, txHash: string)
     };
 
   } catch (err: any) {
-    const errMsg = err.message || '';
-    const errMsgLower = errMsg.toLowerCase();
-    console.log(`Transaction ${txHash} not finalized yet or check failed:`, errMsg);
-
-    // If it is a generic not found/timeout error, it means transaction is still pending/processing
-    const isPending = errMsgLower.includes('timeout') || errMsgLower.includes('timed out') || errMsgLower.includes('not found') || errMsgLower.includes('receipt') || errMsgLower.includes('pending');
-
-    if (!isPending) {
-      // Definitive contract execution error
-      console.error(`Definitive failure for offer ${offerId}:`, err);
-      const offerRes = await query(
-        "UPDATE offers SET status = 'failed' WHERE id = $1 RETURNING *",
-        [offerId]
-      );
-      return {
-        offer: offerRes.rows[0],
-        report: null
-      };
-    }
-
-    // Still pending, just return current offer state
-    const offerRes = await query("SELECT * FROM offers WHERE id = $1", [offerId]);
+    console.error(`Definitive failure retrieving analysis for offer ${offerId}:`, err);
+    const offerRes = await query(
+      "UPDATE offers SET status = 'failed' WHERE id = $1 RETURNING *",
+      [offerId]
+    );
     return {
       offer: offerRes.rows[0],
       report: null
